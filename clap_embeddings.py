@@ -2,6 +2,8 @@ import os
 import subprocess
 import tempfile
 import threading
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
@@ -95,31 +97,62 @@ def get_clap_model() -> tuple[ClapModel, ClapProcessor]:
 
 
 # ============================================================
-# AUDIO LOADING (ffmpeg)
+# AUDIO LOADING (download in Python, decode with ffmpeg locally)
 # ============================================================
+#
+# ffmpeg is asked to decode a local temp file, never the remote URL
+# directly. Some HPC/module ffmpeg builds are compiled without HTTPS
+# protocol support ("Protocol not found" for https:// inputs) -- fetching
+# the bytes in Python sidesteps that dependency entirely and works the
+# same regardless of which ffmpeg build happens to be on PATH.
+
+def download_to_temp_file(url: str, timeout_seconds: int) -> str:
+    file_descriptor, download_path = tempfile.mkstemp(suffix=".download")
+    os.close(file_descriptor)
+
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "curl/8.0"})
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            with open(download_path, "wb") as f:
+                f.write(response.read())
+        return download_path
+    except Exception:
+        if os.path.exists(download_path):
+            os.remove(download_path)
+        raise
+
 
 def load_audio_from_url(
     url,
     target_sample_rate=CLAP_SAMPLE_RATE,
     timeout_seconds=DOWNLOAD_TIMEOUT_SECONDS,
 ):
+    download_path = None
     file_descriptor, temporary_path = tempfile.mkstemp(suffix=".f32")
     os.close(file_descriptor)
 
-    command = [
-        "ffmpeg",
-        "-y",
-        "-loglevel", "error",
-        "-rw_timeout", str(timeout_seconds * 1_000_000),
-        "-i", str(url),
-        "-vn",
-        "-ac", "1",
-        "-ar", str(target_sample_rate),
-        "-f", "f32le",
-        temporary_path,
-    ]
-
     try:
+        try:
+            download_path = download_to_temp_file(url, timeout_seconds)
+        except urllib.error.URLError as error:
+            raise RuntimeError(f"Failed to download audio: {error}") from error
+        except TimeoutError as error:
+            raise TimeoutError(
+                f"Audio download exceeded {timeout_seconds} seconds."
+            ) from error
+
+        command = [
+            "ffmpeg",
+            "-y",
+            "-loglevel", "error",
+            "-i", download_path,
+            "-vn",
+            "-ac", "1",
+            "-ar", str(target_sample_rate),
+            "-f", "f32le",
+            temporary_path,
+        ]
+
         result = subprocess.run(
             command,
             stdout=subprocess.PIPE,
@@ -142,12 +175,14 @@ def load_audio_from_url(
 
     except subprocess.TimeoutExpired as error:
         raise TimeoutError(
-            f"Audio loading exceeded {timeout_seconds} seconds."
+            f"Audio decoding exceeded {timeout_seconds} seconds."
         ) from error
 
     finally:
         if os.path.exists(temporary_path):
             os.remove(temporary_path)
+        if download_path and os.path.exists(download_path):
+            os.remove(download_path)
 
 
 # ============================================================
