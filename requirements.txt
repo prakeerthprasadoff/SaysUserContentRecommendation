@@ -1,5 +1,5 @@
 faster-whisper==1.2.1
-numpy==2.5.1
+numpy==2.2.6
 pandas==3.0.5
 psycopg[binary]==3.3.4
 python-dotenv==1.2.2
