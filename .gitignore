@@ -1,0 +1,23 @@
+# Environment
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data - ignore audio, keep CSVs tracked
+data/**/*.wav
+data/**/*.mp3
+data/**/*.flac
+data/**/*.m4a
+data/**/*.aac
+data/**/*.ogg
+
+# OS
+.DS_Store
