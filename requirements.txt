@@ -1,0 +1,13 @@
+# ffmpeg must also be installed on the system (not a pip package) —
+# `brew install ffmpeg` locally, or `module load ffmpeg` / a conda env on Quest.
+
+ipykernel==7.3.0
+numpy==2.5.1
+pandas==3.0.5
+psycopg[binary]==3.3.4
+python-dotenv==1.2.2
+scipy==1.18.0
+silero-vad==6.2.1
+torch==2.13.0
+torchaudio==2.11.0
+tqdm==4.69.0
