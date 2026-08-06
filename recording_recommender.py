@@ -71,7 +71,7 @@ ID_COLUMN = os.getenv("ID_COLUMN", "id")
 # Prak - 94ffa848-519e-424c-a343-ba2e021bf75c
 # Tavishi - 19749402-c4dc-429a-a664-425240ab2f0b
 # Utkarsh - dd2b5ff0-9a5a-44b7-b5cd-e3a082155c48
-DEFAULT_ACCOUNT_ID = "dd2b5ff0-9a5a-44b7-b5cd-e3a082155c48"
+DEFAULT_ACCOUNT_ID = "94ffa848-519e-424c-a343-ba2e021bf75c"
 
 LIKE_BOOST = 1.0
 RECENCY_DECAY_RATE = 0.2
@@ -349,6 +349,34 @@ def build_query_vector(
     return normalize_vector(query)
 
 
+# ─── EXPLANATIONS ────────────────────────────────────────────────────────────
+
+def find_closest_history_item(
+    candidate_vector: np.ndarray,
+    ids: list[str],
+    matrix: np.ndarray,
+    history_ids: list[str],
+) -> tuple[str, float] | None:
+    """
+    Among the user's history items that exist in this embedding space, find
+    the single one closest to a candidate -- this is the "why" behind a
+    recommendation's score in that space, not just the abstract query-vector
+    similarity.
+    """
+    id_to_idx = {rid: i for i, rid in enumerate(ids)}
+    history_indices = [id_to_idx[rid] for rid in history_ids if rid in id_to_idx]
+
+    if not history_indices:
+        return None
+
+    history_vectors = normalize_matrix_rows(matrix[np.array(history_indices)])
+    similarities = history_vectors @ normalize_vector(candidate_vector)
+
+    best = int(np.argmax(similarities))
+    best_history_id = [rid for rid in history_ids if rid in id_to_idx][best]
+    return best_history_id, float(similarities[best])
+
+
 # ─── SCORING ──────────────────────────────────────────────────────────────
 
 def score_candidates(
@@ -496,6 +524,31 @@ def main() -> None:
         scores = scores[~scores["recording_id"].isin(history_id_set)]
         scores = scores.sort_values("final_score", ascending=False).head(args.top_k)
 
+        # For each recommendation, find the specific history item driving its
+        # score in each embedding space -- this is what makes "73% CLAP match"
+        # into something explainable rather than an opaque number.
+        clap_idx = {rid: i for i, rid in enumerate(clap_ids)}
+        transcript_idx = {rid: i for i, rid in enumerate(transcript_ids)}
+
+        explanations = {}
+        for recording_id in scores["recording_id"]:
+            clap_match = None
+            if recording_id in clap_idx:
+                clap_match = find_closest_history_item(
+                    clap_matrix[clap_idx[recording_id]], clap_ids, clap_matrix, history_ids
+                )
+
+            transcript_match = None
+            if recording_id in transcript_idx:
+                transcript_match = find_closest_history_item(
+                    transcript_matrix[transcript_idx[recording_id]],
+                    transcript_ids,
+                    transcript_matrix,
+                    history_ids,
+                )
+
+            explanations[recording_id] = (clap_match, transcript_match)
+
         display_ids = list(history_id_set) + scores["recording_id"].tolist()
         captions = fetch_recording_captions(engine, display_ids)
 
@@ -519,20 +572,37 @@ def main() -> None:
         for rank, (rid, weight) in enumerate(history_rows, start=1)
     ])
 
-    print(f"\n=== RECOMMENDATIONS (top {len(scores)}) ===\n")
-    print_table([
-        {
-            "#": rank,
-            "Type": content_types.get(row["recording_id"], "?"),
-            "Caption/Transcript": _snippet(
-                captions.get(row["recording_id"]) or transcripts.get(row["recording_id"], "")
-            ),
-            "Score": _pct(row["final_score"]),
-            "CLAP": _pct(row["clap_score"]),
-            "Transcript": _pct(row["transcript_score"]),
-        }
-        for rank, (_, row) in enumerate(scores.iterrows(), start=1)
-    ])
+    def describe(rid: str) -> str:
+        return _snippet(captions.get(rid) or transcripts.get(rid, ""), max_len=70)
+
+    print(f"\n=== RECOMMENDATIONS (top {len(scores)}) ===")
+    for rank, (_, row) in enumerate(scores.iterrows(), start=1):
+        recording_id = row["recording_id"]
+        content_type = content_types.get(recording_id, "?")
+        clap_match, transcript_match = explanations[recording_id]
+
+        print(f"\n{rank}. [{content_type}] {describe(recording_id)}")
+        print(f"   Overall score: {_pct(row['final_score'])}")
+
+        if clap_match is not None:
+            match_id, match_score = clap_match
+            print(
+                f"   Sounds like ({_pct(row['clap_score'])}): "
+                f"your \"{describe(match_id)}\" ({_pct(match_score)} sound match)"
+            )
+        else:
+            print("   Sounds like: — (no CLAP overlap with your history)")
+
+        if transcript_match is not None:
+            match_id, match_score = transcript_match
+            print(
+                f"   Talks about like ({_pct(row['transcript_score'])}): "
+                f"your \"{describe(match_id)}\" ({_pct(match_score)} topic match)"
+            )
+        else:
+            print("   Talks about like: — (no transcript on one or both sides)")
+
+    print()
 
 
 if __name__ == "__main__":
