@@ -1,3 +1,6 @@
 requirements.txt
 .venv
 .env
+audio_cache/
+audio_download_log.csv
+*.partial
