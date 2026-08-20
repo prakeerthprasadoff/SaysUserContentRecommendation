@@ -1,0 +1,99 @@
+@import "tailwindcss";
+@import "@fontsource/geist-sans/400.css";
+@import "@fontsource/geist-sans/500.css";
+@import "@fontsource/geist-sans/600.css";
+@import "@fontsource/geist-sans/700.css";
+@import "@fontsource/geist-mono/400.css";
+@import "@fontsource/geist-mono/500.css";
+
+@theme {
+  --font-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+}
+
+/*
+  Themed tokens live as plain CSS custom properties (not @theme) so light/dark can
+  switch at runtime via [data-theme] and the OS preference, per the documented
+  dual-scope pattern: media query covers OS setting, [data-theme] covers the
+  explicit toggle, and the toggle wins in both directions.
+*/
+:root {
+  color-scheme: light;
+
+  --surface-0: #fcfcfb; /* page background */
+  --surface-1: #ffffff; /* card background */
+  --surface-2: #f4f3ef; /* inset / hover background */
+  --line: #e7e5df;
+
+  --ink: #0b0b0b;
+  --ink-soft: #52514e;
+  --ink-muted: #8a887e;
+
+  /* categorical identity: speech vs non-speech (never reused elsewhere) */
+  --speech: #4a3aa7;
+  --non-speech: #eb6834;
+
+  /* diverging: positive/negative contribution in the score breakdown (never reused elsewhere) */
+  --pos: #2a78d6;
+  --neg: #e34948;
+  --diverging-mid: #f0efec;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+
+    --surface-0: #101010;
+    --surface-1: #1a1a19;
+    --surface-2: #232220;
+    --line: #2d2c29;
+
+    --ink: #ffffff;
+    --ink-soft: #c3c2b7;
+    --ink-muted: #86847a;
+
+    --speech: #9085e9;
+    --non-speech: #d95926;
+
+    --pos: #3987e5;
+    --neg: #e66767;
+    --diverging-mid: #383835;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface-0: #101010;
+  --surface-1: #1a1a19;
+  --surface-2: #232220;
+  --line: #2d2c29;
+
+  --ink: #ffffff;
+  --ink-soft: #c3c2b7;
+  --ink-muted: #86847a;
+
+  --speech: #9085e9;
+  --non-speech: #d95926;
+
+  --pos: #3987e5;
+  --neg: #e66767;
+  --diverging-mid: #383835;
+}
+
+body {
+  background: var(--surface-0);
+  color: var(--ink);
+}
+
+* {
+  border-color: var(--line);
+}
+
+audio {
+  display: none;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--pos) 30%, transparent);
+}
